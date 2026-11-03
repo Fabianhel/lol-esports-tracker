@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LoL Esports Tracker</title>
+  <meta name="description" content="Live-Spiele, Spielplan und Tabellen der LoL-Esports-Ligen – nach Region und Event.">
+  <meta name="theme-color" content="#0b0e14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="LoL Esports">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="titlebar">
+        <h1><span class="logo">◆</span> LoL Esports</h1>
+        <div class="actions">
+          <button id="refreshBtn" class="icon-btn" aria-label="Aktualisieren">⟳</button>
+          <button id="favBtn" class="icon-btn" aria-label="Favoriten verwalten">☆</button>
+        </div>
+      </div>
+      <nav id="regionBar" class="chipbar" aria-label="Regionen"></nav>
+      <nav id="leagueBar" class="chipbar leagues" aria-label="Ligen und Events"></nav>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav id="tabbar" class="tabbar">
+      <button data-tab="live"><span class="ti">●</span>Live</button>
+      <button data-tab="schedule"><span class="ti">▦</span>Spielplan</button>
+      <button data-tab="standings"><span class="ti">≡</span>Tabellen</button>
+    </nav>
+  </div>
+
+  <div id="sheet" class="sheet">
+    <div id="sheetBackdrop" class="backdrop"></div>
+    <div class="panel"><div class="grip"></div><div id="sheetBody"></div></div>
+  </div>
+
+  <div id="favSheet" class="sheet">
+    <div id="favBackdrop" class="backdrop"></div>
+    <div class="panel"><div class="grip"></div><div id="favBody"></div></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
