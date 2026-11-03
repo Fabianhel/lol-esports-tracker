@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LoL Esports</string>
+    <string name="title_activity_main">LoL Esports</string>
+    <string name="package_name">io.github.fabianhel.lolesports</string>
+    <string name="custom_url_scheme">io.github.fabianhel.lolesports</string>
+    <string name="widget_description">Stand des Matches, das du in der App mit 📌 verfolgst</string>
+    <string name="widget_idle_title">Kein Match verfolgt</string>
+    <string name="widget_idle_hint">Öffne ein Match in der App und tippe auf 📌 Verfolgen</string>
+</resources>

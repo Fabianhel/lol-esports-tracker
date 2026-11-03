@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.fabianhel.lolesports",
+  "appName": "LoL Esports",
+  "webDir": "www",
+  "backgroundColor": "#0b0e14",
+  "android": {
+    "allowMixedContent": false
+  }
+}

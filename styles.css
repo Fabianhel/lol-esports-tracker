@@ -12,8 +12,8 @@
   --blue: #4c9aff;
   --red: #ff5c6c;
   --radius: 14px;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   color-scheme: dark;
 }
 
@@ -198,3 +198,15 @@ img[src=""] { visibility: hidden; }
 .fav-row span { flex: 1; }
 .fav-row b { font-size: 22px; color: var(--muted); }
 .fav-row b.on { color: var(--accent); }
+
+/* ---------- Verfolgen / Android-App ---------- */
+.mh-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.btn.tracking { background: var(--surface-2); color: var(--accent); border: 1px solid var(--accent); }
+.btn[disabled] { opacity: .5; }
+.pin { font-size: 13px; }
+.banner { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; margin-top: 12px; font-size: 13px; color: var(--text); text-decoration: none; }
+.banner span { flex: 1; }
+.banner button { color: var(--accent); font-weight: 700; font-size: 13px; padding: 4px 6px; }
+.banner.update { background: var(--accent); color: var(--accent-ink); font-weight: 700; justify-content: center; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(80px + var(--safe-bottom)); z-index: 60; max-width: 520px; margin: 0 auto; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 12px; font-size: 14px; text-align: center; opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: none; }

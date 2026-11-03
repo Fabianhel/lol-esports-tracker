@@ -1,5 +1,11 @@
 import * as api from './api.js';
 
+// ---------- Android-App (Capacitor) ----------
+const Native = window.Capacitor?.isNativePlatform?.() ? window.Capacitor : null;
+const Tracker = Native ? (Native.registerPlugin ? Native.registerPlugin('LiveTracker') : Native.Plugins?.LiveTracker) : null;
+const REPO = 'Fabianhel/lol-esports-tracker';
+const APK_URL = `https://github.com/${REPO}/releases/latest/download/lol-esports.apk`;
+
 // ---------- Hilfsfunktionen ----------
 const $ = (sel, root = document) => root.querySelector(sel);
 const h = (s) =>
@@ -72,6 +78,9 @@ const state = {
   schedule: null, // { events, older, newer, key }
   standings: { leagueId: null, tournaments: [], tournamentId: null, data: null, stageIdx: 0 },
   timers: [],
+  tracked: null, // Match-ID, die in der Android-App verfolgt wird
+  startTimes: new Map(), // Match-ID -> Startzeit (für die Verfolgung vor Spielbeginn)
+  update: null, // { version } wenn eine neuere APK verfügbar ist
 };
 
 function persist() {
@@ -197,6 +206,8 @@ function matchCard(ev, { showDate = false } = {}) {
   const live = ev.state === 'inProgress';
   const done = ev.state === 'completed';
   const bo = m.strategy?.count ? `Bo${m.strategy.count}` : '';
+  if (m.id && ev.startTime) state.startTimes.set(m.id, ev.startTime);
+  const pin = state.tracked && state.tracked === m.id ? '<span class="pin" title="Wird verfolgt">📌</span>' : '';
   let status;
   if (live) status = `<span class="pill live">LIVE</span>`;
   else if (done) status = `<span class="pill done">Beendet</span>`;
@@ -217,7 +228,7 @@ function matchCard(ev, { showDate = false } = {}) {
     <header>
       <span class="league"><img src="${h(league.image)}" alt="" loading="lazy">${h(league.name || ev.league?.name || '')}</span>
       <span class="block">${h(ev.blockName || '')}${bo ? ' · ' + bo : ''}${showDate && start ? ' · ' + fmtDay.format(start) : ''}</span>
-      ${status}
+      ${pin}${status}
     </header>
     ${teams.length ? teams.map(teamRow).join('') : '<div class="team"><span class="name">TBD</span></div>'}
   </article>`;
@@ -248,7 +259,8 @@ async function renderLive(view) {
         .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
         .slice(0, 6);
 
-      let html = `<h2 class="section-title"><span class="dot"></span>Jetzt live</h2>`;
+      let html = topBanners();
+      html += `<h2 class="section-title"><span class="dot"></span>Jetzt live</h2>`;
       html += liveMatches.length
         ? liveMatches.map((ev) => matchCard(ev)).join('')
         : `<div class="empty compact"><p>Gerade läuft kein Spiel in deiner Auswahl.</p></div>`;
@@ -479,7 +491,17 @@ function prettySlug(slug = '') {
     .replace(/\b\p{L}/gu, (c) => c.toUpperCase());
 }
 
-$('#view').addEventListener('click', (e) => {
+$('#view').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-open-tracked]') && state.tracked) {
+    openMatch(state.tracked);
+    return;
+  }
+  if (e.target.closest('[data-stop-tracked]') && Tracker) {
+    await Tracker.stop().catch(() => {});
+    state.tracked = null;
+    renderTab();
+    return;
+  }
   const pick = e.target.closest('[data-pick-league]');
   if (pick) {
     state.league = pick.dataset.pickLeague;
@@ -566,7 +588,10 @@ function drawMatch(keepStats = false) {
       <div class="mh-score">${h(a?.result?.gameWins ?? 0)} : ${h(b?.result?.gameWins ?? 0)}${live ? '<span class="pill live">LIVE</span>' : ''}</div>
       ${teamBig(b)}
     </div>
-    ${live && league.slug ? `<a class="btn" href="https://lolesports.com/live/${h(league.slug)}" target="_blank" rel="noopener">▶ Stream ansehen</a>` : ''}
+    <div class="mh-actions">
+      ${trackButton(m, games)}
+      ${live && league.slug ? `<a class="btn ghost" href="https://lolesports.com/live/${h(league.slug)}" target="_blank" rel="noopener">▶ Stream</a>` : ''}
+    </div>
   </div>`;
   const tabs = games.length
     ? `<div class="segmented">${games
@@ -582,6 +607,105 @@ function drawMatch(keepStats = false) {
   loadGameStats();
 }
 
+// ---------- Verfolgen (Sperrbildschirm & Widget) ----------
+function seriesFinished(m, games) {
+  const count = m.strategy?.count || 1;
+  const needed = Math.floor(count / 2) + 1;
+  const wins = (m.teams || []).map((t) => t.result?.gameWins ?? 0);
+  if (wins.some((w) => w >= needed)) return true;
+  return games.length > 0 && games.every((g) => g.state === 'completed' || g.state === 'unneeded');
+}
+
+function trackButton(m, games) {
+  if (seriesFinished(m, games)) return '';
+  if (!Tracker) {
+    if (!/Android/i.test(navigator.userAgent)) return '';
+    return `<a class="btn ghost" href="${APK_URL}" title="Android-App herunterladen">📌 Live auf dem Sperrbildschirm: Android-App</a>`;
+  }
+  if (state.tracked === sheetState.matchId) {
+    return `<button class="btn tracking" data-track="stop">📌 Wird verfolgt – beenden</button>`;
+  }
+  const start = state.startTimes.get(sheetState.matchId);
+  const live = games.some((g) => g.state === 'inProgress' || g.state === 'completed');
+  if (!live && start && new Date(start) - Date.now() > 60 * 60_000) {
+    return `<button class="btn ghost" disabled>📌 Verfolgen ab 1 h vor Start</button>`;
+  }
+  return `<button class="btn" data-track="start">📌 Verfolgen</button>`;
+}
+
+async function toggleTracking(action) {
+  if (!Tracker || !sheetState) return;
+  try {
+    if (action === 'start') {
+      const start = state.startTimes.get(sheetState.matchId);
+      await Tracker.start({ matchId: sheetState.matchId, startTime: start ? new Date(start).getTime() : 0 });
+      state.tracked = sheetState.matchId;
+      toast('📌 Stand erscheint jetzt in der Benachrichtigung und im Widget');
+    } else {
+      await Tracker.stop();
+      state.tracked = null;
+      toast('Verfolgung beendet');
+    }
+  } catch (err) {
+    toast(err.message || String(err));
+  }
+  if (sheetState) drawMatch(true);
+}
+
+async function refreshTracked() {
+  if (!Tracker) return;
+  try {
+    const s = await Tracker.getStatus();
+    state.tracked = s.matchId || null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function topBanners() {
+  let html = '';
+  if (state.update) {
+    html += `<a class="banner update" href="${APK_URL}">⬇ Neue Version ${h(state.update)} verfügbar – jetzt herunterladen</a>`;
+  }
+  if (state.tracked) {
+    html += `<div class="banner"><span>📌 Du verfolgst ein Match auf dem Sperrbildschirm</span>
+      <button data-open-tracked>Öffnen</button><button data-stop-tracked>Beenden</button></div>`;
+  }
+  return html;
+}
+
+async function checkForUpdate(versionCode) {
+  if (!versionCode) return;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!res.ok) return;
+    const rel = await res.json();
+    const build = Number(String(rel.tag_name || '').replace(/^build-/, ''));
+    if (build > versionCode) {
+      state.update = `1.0.${build}`;
+      if (state.tab === 'live') renderTab();
+    }
+  } catch {
+    /* kein Update-Check möglich */
+  }
+}
+
+let toastTimer;
+function toast(msg) {
+  let el = $('#toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
 function teamBig(t) {
   if (!t) return `<div class="mh-team"><span>TBD</span></div>`;
   return `<div class="mh-team ${t.result?.outcome === 'win' ? 'win' : ''}"><img src="${h(t.image)}" alt="" onerror="this.style.visibility='hidden'"><span>${h(
@@ -590,6 +714,11 @@ function teamBig(t) {
 }
 
 $('#sheetBody').addEventListener('click', (e) => {
+  const track = e.target.closest('[data-track]');
+  if (track) {
+    toggleTracking(track.dataset.track);
+    return;
+  }
   const btn = e.target.closest('[data-game]');
   if (!btn || !sheetState) return;
   sheetState.gameIdx = Number(btn.dataset.game);
@@ -735,14 +864,25 @@ async function init() {
   if (state.region !== 'all' && state.region !== 'fav' && !regions().includes(state.region)) state.region = 'all';
   if (state.league && !state.leaguesById.has(state.league)) state.league = null;
   renderFilters();
+
+  if (Tracker) {
+    const status = await refreshTracked();
+    checkForUpdate(status?.versionCode);
+    Tracker.addListener('openMatch', (d) => d?.matchId && openMatch(d.matchId));
+    Tracker.consumeLaunchMatch()
+      .then((d) => d?.matchId && openMatch(d.matchId))
+      .catch(() => {});
+  }
   renderTab();
 }
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.leagues.length && state.tab === 'live') renderTab();
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !state.leagues.length) return;
+  await refreshTracked();
+  if (state.tab === 'live') renderTab();
 });
 
-if ('serviceWorker' in navigator) {
+if (!Native && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
 

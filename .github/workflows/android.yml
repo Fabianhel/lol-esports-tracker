@@ -1,0 +1,82 @@
+name: Android-App bauen
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      # Ohne eigenen Schlüssel: Debug-Schlüssel zwischen Builds aufheben, damit Updates sich drüber installieren lassen
+      - name: Debug-Schlüssel wiederverwenden
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore
+
+      - name: Eigenen Signierschlüssel einrichten (optional)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Web-App übernehmen
+        run: |
+          npm ci
+          npm run build:web
+          npx cap sync android
+
+      - name: APK bauen
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk ../lol-esports.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lol-esports-apk
+          path: lol-esports.apk
+
+      - name: Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: LoL Esports 1.0.${{ github.run_number }}
+          make_latest: true
+          files: lol-esports.apk
+          body: |
+            **Installieren:** `lol-esports.apk` unten herunterladen und auf dem Android-Handy öffnen.
+            Beim ersten Mal musst du erlauben, dass dein Browser bzw. die Dateien-App Apps installieren darf.
+
+            Commit: ${{ github.sha }}
