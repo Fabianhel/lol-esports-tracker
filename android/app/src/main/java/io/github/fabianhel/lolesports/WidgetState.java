@@ -65,6 +65,23 @@ final class WidgetState {
         LiveWidgetProvider.refreshAll(c);
     }
 
+    static void saveScheduled(Context c, String codeA, String codeB, String league, String when) {
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("active", true)
+            .putBoolean("finished", true) // graue Titelfarbe
+            .putString("codeA", codeA == null || codeA.isEmpty() ? "TBD" : codeA)
+            .putString("codeB", codeB == null || codeB.isEmpty() ? "TBD" : codeB)
+            .putString("score", "vs")
+            .putString("title", "📌 Vorgemerkt" + (league == null || league.isEmpty() ? "" : " · " + league))
+            .putString("line2", when)
+            .putString("line3", "Live-Stand ab 15 Min. vor Beginn")
+            .apply();
+        logoFile(c, "a").delete();
+        logoFile(c, "b").delete();
+        LiveTrackerService.prefs(c).edit().remove("logo_url_a").remove("logo_url_b").apply();
+        LiveWidgetProvider.refreshAll(c);
+    }
+
     static void clear(Context c) {
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
         logoFile(c, "a").delete();

@@ -86,14 +86,27 @@ public class LiveTrackerPlugin extends Plugin {
 
     private void doStart(PluginCall call) {
         Context ctx = getContext();
-        Intent i = new Intent(ctx, LiveTrackerService.class)
-            .setAction(LiveTrackerService.ACTION_START)
-            .putExtra(LiveTrackerService.EXTRA_MATCH, call.getString("matchId"))
-            .putExtra(LiveTrackerService.EXTRA_START, call.getData().optLong("startTime", 0L));
-        ContextCompat.startForegroundService(ctx, i);
-        askBatteryOptimizationOnce();
+        String matchId = call.getString("matchId");
+        long startTime = call.getData().optLong("startTime", 0L);
         JSObject r = new JSObject();
-        r.put("matchId", call.getString("matchId"));
+        r.put("matchId", matchId);
+
+        // Laufende Verfolgung bzw. alte Vormerkung beenden, wir verfolgen immer nur ein Match
+        TrackerScheduler.clearScheduled(ctx);
+
+        if (TrackerScheduler.shouldSchedule(startTime)) {
+            ctx.stopService(new Intent(ctx, LiveTrackerService.class));
+            TrackerScheduler.schedule(ctx, matchId, startTime, call.getString("teamA", ""), call.getString("teamB", ""), call.getString("league", ""));
+            r.put("scheduled", true);
+        } else {
+            Intent i = new Intent(ctx, LiveTrackerService.class)
+                .setAction(LiveTrackerService.ACTION_START)
+                .putExtra(LiveTrackerService.EXTRA_MATCH, matchId)
+                .putExtra(LiveTrackerService.EXTRA_START, startTime);
+            ContextCompat.startForegroundService(ctx, i);
+            r.put("scheduled", false);
+        }
+        askBatteryOptimizationOnce();
         call.resolve(r);
     }
 
@@ -115,6 +128,7 @@ public class LiveTrackerPlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         Context ctx = getContext();
+        TrackerScheduler.clearScheduled(ctx);
         LiveTrackerService.prefs(ctx).edit().remove(LiveTrackerService.KEY_MATCH).apply();
         ctx.stopService(new Intent(ctx, LiveTrackerService.class));
         WidgetState.clear(ctx);
@@ -127,6 +141,7 @@ public class LiveTrackerPlugin extends Plugin {
         JSObject r = new JSObject();
         String match = LiveTrackerService.prefs(ctx).getString(LiveTrackerService.KEY_MATCH, null);
         if (match != null) r.put("matchId", match);
+        r.put("scheduled", TrackerScheduler.isScheduled(ctx));
         try {
             PackageInfo info = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             long code = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;

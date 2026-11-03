@@ -38,8 +38,8 @@ public class LiveTrackerService extends Service {
     static final String KEY_MATCH = "matchId";
     static final String KEY_START = "startTime";
 
-    private static final String CH_LIVE = "live";
-    private static final String CH_RESULT = "result";
+    static final String CH_LIVE = "live";
+    static final String CH_RESULT = "result";
     private static final int NOTIF_LIVE = 1001;
     private static final int NOTIF_RESULT = 1002;
     private static final long MAX_DURATION = 12L * 60 * 60 * 1000;
@@ -61,7 +61,7 @@ public class LiveTrackerService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        createChannels();
+        createChannels(this);
         thread = new HandlerThread("LiveTracker");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -89,6 +89,8 @@ public class LiveTrackerService extends Service {
             stopSelfSafely();
             return START_NOT_STICKY;
         }
+        // Eine Vormerkung ist ab jetzt eine echte Verfolgung
+        TrackerScheduler.clearScheduled(this);
 
         if (!id.equals(matchId)) {
             last = null;
@@ -170,9 +172,9 @@ public class LiveTrackerService extends Service {
 
     // ---------- Benachrichtigungen ----------
 
-    private void createChannels() {
+    static void createChannels(Context c) {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = getSystemService(NotificationManager.class);
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
 
         // Normale Wichtigkeit, aber ohne Ton – so bleibt sie auf dem Sperrbildschirm sichtbar
         NotificationChannel live = new NotificationChannel(CH_LIVE, "Live-Stand", NotificationManager.IMPORTANCE_DEFAULT);
@@ -306,7 +308,7 @@ public class LiveTrackerService extends Service {
         if (handler != null) handler.removeCallbacksAndMessages(null);
         if (thread != null) thread.quitSafely();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-        if (!finishedNormally) WidgetState.clear(this);
+        if (!finishedNormally && !TrackerScheduler.isScheduled(this)) WidgetState.clear(this);
         NotificationManagerCompat.from(this).cancel(NOTIF_LIVE);
         super.onDestroy();
     }

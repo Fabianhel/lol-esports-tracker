@@ -79,6 +79,7 @@ const state = {
   standings: { leagueId: null, tournaments: [], tournamentId: null, data: null, stageIdx: 0 },
   timers: [],
   tracked: null, // Match-ID, die in der Android-App verfolgt wird
+  trackedScheduled: false, // true = nur vorgemerkt, Live-Stand startet kurz vor Beginn
   startTimes: new Map(), // Match-ID -> Startzeit (für die Verfolgung vor Spielbeginn)
   update: null, // { version } wenn eine neuere APK verfügbar ist
 };
@@ -499,6 +500,7 @@ $('#view').addEventListener('click', async (e) => {
   if (e.target.closest('[data-stop-tracked]') && Tracker) {
     await Tracker.stop().catch(() => {});
     state.tracked = null;
+    state.trackedScheduled = false;
     renderTab();
     return;
   }
@@ -623,14 +625,17 @@ function trackButton(m, games) {
     return `<a class="btn ghost" href="${APK_URL}" title="Android-App herunterladen">📌 Live auf dem Sperrbildschirm: Android-App</a>`;
   }
   if (state.tracked === sheetState.matchId) {
-    return `<button class="btn tracking" data-track="stop">📌 Wird verfolgt – beenden</button>`;
+    return state.trackedScheduled
+      ? `<button class="btn tracking" data-track="stop">📌 Vorgemerkt – löschen</button>`
+      : `<button class="btn tracking" data-track="stop">📌 Wird verfolgt – beenden</button>`;
   }
   const start = state.startTimes.get(sheetState.matchId);
   const live = games.some((g) => g.state === 'inProgress' || g.state === 'completed');
-  if (!live && start && new Date(start) - Date.now() > 60 * 60_000) {
-    return `<button class="btn ghost" disabled>📌 Verfolgen ab 1 h vor Start</button>`;
+  const until = start ? new Date(start) - Date.now() : 0;
+  if (!live && until > 24 * 60 * 60_000) {
+    return `<button class="btn ghost" disabled>📌 Vormerken ab 24 h vor Start</button>`;
   }
-  return `<button class="btn" data-track="start">📌 Verfolgen</button>`;
+  return `<button class="btn" data-track="start">📌 ${!live && until > 20 * 60_000 ? 'Vormerken' : 'Verfolgen'}</button>`;
 }
 
 async function toggleTracking(action) {
@@ -638,13 +643,26 @@ async function toggleTracking(action) {
   try {
     if (action === 'start') {
       const start = state.startTimes.get(sheetState.matchId);
-      await Tracker.start({ matchId: sheetState.matchId, startTime: start ? new Date(start).getTime() : 0 });
+      const teams = sheetState.event.match?.teams || [];
+      const res = await Tracker.start({
+        matchId: sheetState.matchId,
+        startTime: start ? new Date(start).getTime() : 0,
+        teamA: teams[0]?.code || teams[0]?.name || '',
+        teamB: teams[1]?.code || teams[1]?.name || '',
+        league: sheetState.event.league?.name || '',
+      });
       state.tracked = sheetState.matchId;
-      toast('📌 Stand erscheint jetzt in der Benachrichtigung und im Widget');
+      state.trackedScheduled = !!res?.scheduled;
+      toast(
+        state.trackedScheduled
+          ? `📌 Vorgemerkt – der Live-Stand startet 15 Min. vor Beginn (${fmtDay.format(new Date(start))}, ${fmtTime.format(new Date(start))} Uhr)`
+          : '📌 Stand erscheint jetzt in der Benachrichtigung und im Widget'
+      );
     } else {
       await Tracker.stop();
+      toast(state.trackedScheduled ? 'Vormerkung gelöscht' : 'Verfolgung beendet');
       state.tracked = null;
-      toast('Verfolgung beendet');
+      state.trackedScheduled = false;
     }
   } catch (err) {
     toast(err.message || String(err));
@@ -657,6 +675,7 @@ async function refreshTracked() {
   try {
     const s = await Tracker.getStatus();
     state.tracked = s.matchId || null;
+    state.trackedScheduled = !!s.scheduled;
     return s;
   } catch {
     return null;
@@ -669,8 +688,9 @@ function topBanners() {
     html += `<a class="banner update" href="${APK_URL}">⬇ Neue Version ${h(state.update)} verfügbar – jetzt herunterladen</a>`;
   }
   if (state.tracked) {
-    html += `<div class="banner"><span>📌 Du verfolgst ein Match auf dem Sperrbildschirm</span>
-      <button data-open-tracked>Öffnen</button><button data-stop-tracked>Beenden</button></div>`;
+    html += `<div class="banner"><span>📌 ${
+      state.trackedScheduled ? 'Match vorgemerkt – Live-Stand startet 15 Min. vor Beginn' : 'Du verfolgst ein Match auf dem Sperrbildschirm'
+    }</span><button data-open-tracked>Öffnen</button><button data-stop-tracked>${state.trackedScheduled ? 'Löschen' : 'Beenden'}</button></div>`;
   }
   return html;
 }

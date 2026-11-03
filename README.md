@@ -25,6 +25,7 @@ Kills: 9–5 · Gold +3,3k (GEN)
 - **Widget** für den Startbildschirm (lange auf den Startbildschirm drücken → Widgets → „LoL Esports Live“)
 - Am Ende kommt eine Benachrichtigung mit dem Endergebnis, danach stoppt die Verfolgung von selbst
 - Benachrichtigung oder Widget antippen öffnet das Match in der App
+- **Vormerken:** Matches bis zu 24 h vor Beginn mit 📌 markieren. Die App startet den Live-Stand dann automatisch 15 Min. vor dem geplanten Start (funktioniert auch nach einem Neustart des Handys)
 
 **Installieren:** [lol-esports.apk herunterladen](https://github.com/Fabianhel/lol-esports-tracker/releases/latest/download/lol-esports.apk) und auf dem Handy öffnen.
 Beim ersten Mal fragt Android, ob dein Browser bzw. die Dateien-App Apps installieren darf. Das musst du erlauben.
