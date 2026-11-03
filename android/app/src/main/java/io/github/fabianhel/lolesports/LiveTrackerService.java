@@ -259,6 +259,8 @@ public class LiveTrackerService extends Service {
             p.edit().remove(key).apply();
             return;
         }
+        // Android blockiert unverschlüsselte Verbindungen, die API liefert Logos aber teils mit http://
+        if (url.startsWith("http://")) url = "https://" + url.substring(7);
         if (url.equals(p.getString(key, null)) && file.exists()) return;
         try {
             byte[] data = LolApi.getBytes(url);

@@ -12,8 +12,14 @@ async function get(path, params = {}) {
   }
   const res = await fetch(url, { headers: { 'x-api-key': API_KEY } });
   if (!res.ok) throw new Error(`API ${path}: HTTP ${res.status}`);
-  const json = await res.json();
+  const json = JSON.parse(await res.text(), httpsOnly);
   return json.data;
+}
+
+// Die API liefert Bild-URLs teils mit http://. Die Android-App (WebView) blockiert das,
+// deshalb alle Adressen auf https:// umstellen.
+function httpsOnly(_key, value) {
+  return typeof value === 'string' && value.startsWith('http://') ? 'https://' + value.slice(7) : value;
 }
 
 export async function getLeagues() {
@@ -65,7 +71,7 @@ async function feed(kind, gameId) {
   if (res.status === 204 || res.status === 404) return null; // noch keine Daten
   if (!res.ok) throw new Error(`Feed ${kind}: HTTP ${res.status}`);
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  return text ? JSON.parse(text, httpsOnly) : null;
 }
 
 export const getGameWindow = (gameId) => feed('window', gameId);
