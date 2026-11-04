@@ -243,3 +243,12 @@ img[src=""] { visibility: hidden; }
 .result .opp span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result .meta { text-align: right; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .result .meta small { display: block; font-size: 11px; }
+
+/* ---------- Deutscher Stream ---------- */
+.de-stream { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.de-stream.in-card { justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--border); }
+.de-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-right: 2px; }
+.sbtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9px; font-weight: 700; font-size: 13px; color: #fff; text-decoration: none; }
+.sbtn.twitch { background: #9146ff; }
+.sbtn.youtube { background: #e62117; }
+.sbtn:active { opacity: .8; }

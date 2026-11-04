@@ -6,6 +6,16 @@ const Tracker = Native ? (Native.registerPlugin ? Native.registerPlugin('LiveTra
 const REPO = 'Fabianhel/lol-esports-tracker';
 const APK_URL = `https://github.com/${REPO}/releases/latest/download/lol-esports.apk`;
 
+// Deutscher Co-Stream (Tolkin). YouTube: Suche mit Filter „Live“, da der Kanalname nicht fest steht.
+const GERMAN_STREAM = {
+  twitch: 'https://www.twitch.tv/tolkin',
+  youtube: 'https://www.youtube.com/results?search_query=tolkin+lol&sp=EgJAAQ%253D%253D',
+};
+const germanStreamButtons = (cls = '') =>
+  `<div class="de-stream ${cls}"><span class="de-label">🇩🇪 Tolkin</span>
+    <a class="sbtn twitch" href="${GERMAN_STREAM.twitch}" target="_blank" rel="noopener">Twitch</a>
+    <a class="sbtn youtube" href="${GERMAN_STREAM.youtube}" target="_blank" rel="noopener">YouTube</a></div>`;
+
 // ---------- Hilfsfunktionen ----------
 const $ = (sel, root = document) => root.querySelector(sel);
 const h = (s) =>
@@ -202,7 +212,7 @@ function leagueOf(ev) {
   return state.leaguesBySlug.get(ev.league?.slug) || state.leaguesById.get(ev.league?.id) || ev.league || {};
 }
 
-function matchCard(ev, { showDate = false } = {}) {
+function matchCard(ev, { showDate = false, streams = false } = {}) {
   const m = ev.match || {};
   const teams = m.teams || [];
   const league = leagueOf(ev);
@@ -235,10 +245,12 @@ function matchCard(ev, { showDate = false } = {}) {
       ${pin}${status}
     </header>
     ${teams.length ? teams.map(teamRow).join('') : '<div class="team"><span class="name">TBD</span></div>'}
+    ${streams && live ? germanStreamButtons('in-card') : ''}
   </article>`;
 }
 
 $('#view').addEventListener('click', (e) => {
+  if (e.target.closest('a')) return; // Stream-Links nicht als Klick auf die Karte werten
   const card = e.target.closest('[data-match]');
   if (card && card.dataset.match) openMatch(card.dataset.match);
 });
@@ -266,7 +278,7 @@ async function renderLive(view) {
       let html = topBanners();
       html += `<h2 class="section-title"><span class="dot"></span>Jetzt live</h2>`;
       html += liveMatches.length
-        ? liveMatches.map((ev) => matchCard(ev)).join('')
+        ? liveMatches.map((ev) => matchCard(ev, { streams: true })).join('')
         : `<div class="empty compact"><p>Gerade läuft kein Spiel in deiner Auswahl.</p></div>`;
       if (upcoming.length) html += `<h2 class="section-title">Als Nächstes</h2>` + upcoming.map((ev) => matchCard(ev, { showDate: true })).join('');
       if (recent.length) html += `<h2 class="section-title">Zuletzt gespielt</h2>` + recent.map((ev) => matchCard(ev, { showDate: true })).join('');
@@ -603,6 +615,7 @@ function drawMatch(keepStats = false) {
       ${trackButton(m, games)}
       ${live && league.slug ? `<a class="btn ghost" href="https://lolesports.com/live/${h(league.slug)}" target="_blank" rel="noopener">▶ Stream</a>` : ''}
     </div>
+    ${live ? germanStreamButtons() : ''}
   </div>`;
   const tabs = games.length
     ? `<div class="segmented">${games
