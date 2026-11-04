@@ -51,6 +51,11 @@ export async function getStandings(tournamentId) {
   return (data.standings || [])[0] || { stages: [] };
 }
 
+export async function getTeam(slug) {
+  const data = await get('getTeams', { id: slug });
+  return (data.teams || [])[0] || null;
+}
+
 export async function getEventDetails(matchId) {
   const data = await get('getEventDetails', { id: matchId });
   return data.event;

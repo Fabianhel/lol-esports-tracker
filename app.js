@@ -82,6 +82,7 @@ const state = {
   trackedScheduled: false, // true = nur vorgemerkt, Live-Stand startet kurz vor Beginn
   startTimes: new Map(), // Match-ID -> Startzeit (für die Verfolgung vor Spielbeginn)
   update: null, // { version } wenn eine neuere APK verfügbar ist
+  teamsByLeague: new Map(), // League-ID -> Teams des aktuellen Turniers
 };
 
 function persist() {
@@ -171,6 +172,7 @@ $('#refreshBtn').addEventListener('click', () => {
   state.schedule = null;
   state.standings.data = null;
   state.standings.leagueId = null;
+  state.teamsByLeague.clear();
   renderTab();
 });
 
@@ -187,6 +189,7 @@ function renderTab() {
   if (state.tab === 'live') return renderLive(view);
   if (state.tab === 'schedule') return renderSchedule(view);
   if (state.tab === 'standings') return renderStandings(view);
+  if (state.tab === 'teams') return renderTeams(view);
 }
 
 const loading = (msg = 'Lade …') => `<div class="empty"><div class="spinner"></div><p>${h(msg)}</p></div>`;
@@ -397,12 +400,7 @@ async function renderStandings(view) {
     if (st.leagueId !== league.id) {
       view.innerHTML = loading('Lade Turniere …');
       const tournaments = await api.getTournaments(league.id);
-      tournaments.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
-      const today = dayKey(new Date());
-      const current =
-        tournaments.find((t) => t.startDate <= today && today <= t.endDate) ||
-        tournaments.find((t) => t.startDate <= today) ||
-        tournaments[tournaments.length - 1];
+      const current = currentTournament(tournaments);
       Object.assign(st, { leagueId: league.id, tournaments, tournamentId: current?.id, data: null, stageIdx: 0 });
     }
     if (!st.tournamentId) {
@@ -429,6 +427,17 @@ async function renderStandings(view) {
   }
   if (state.tab !== 'standings') return;
   drawStandings(view, league);
+}
+
+// Sortiert die Turniere (neueste zuerst) und liefert das laufende bzw. zuletzt begonnene
+function currentTournament(tournaments) {
+  tournaments.sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+  const today = dayKey(new Date());
+  return (
+    tournaments.find((t) => t.startDate <= today && today <= t.endDate) ||
+    tournaments.find((t) => t.startDate <= today) ||
+    tournaments[tournaments.length - 1]
+  );
 }
 
 function drawStandings(view, league) {
@@ -819,6 +828,239 @@ function gameStatsHtml(win, det, teams) {
     <h3 class="sub blue">${h(blueT.name || 'Blaue Seite')}</h3>${playerRows(meta.blueTeamMetadata)}
     <h3 class="sub red">${h(redT.name || 'Rote Seite')}</h3>${playerRows(meta.redTeamMetadata)}
   </div>`;
+}
+
+// ---------- Teams ----------
+const isRealTeam = (t) => t && t.id && t.id !== '0' && t.name && !/^tbd$/i.test(t.name);
+
+// Teams einer Liga aus den Tabellen des aktuellen (sonst vorherigen) Turniers
+async function loadLeagueTeams(league) {
+  if (state.teamsByLeague.has(league.id)) return state.teamsByLeague.get(league.id);
+  const tournaments = await api.getTournaments(league.id);
+  const current = currentTournament(tournaments);
+  const candidates = [current, ...tournaments.filter((t) => t !== current)].filter(Boolean).slice(0, 3);
+  let teams = [];
+  for (const t of candidates) {
+    const standings = await api.getStandings(t.id);
+    const found = new Map();
+    for (const stage of standings.stages || []) {
+      for (const sec of stage.sections || []) {
+        for (const r of sec.rankings || []) {
+          for (const team of r.teams || []) {
+            if (isRealTeam(team)) found.set(team.id, { ...found.get(team.id), ...team });
+          }
+        }
+        for (const m of sec.matches || []) {
+          for (const team of m.teams || []) {
+            if (isRealTeam(team) && !found.has(team.id)) found.set(team.id, team);
+          }
+        }
+      }
+    }
+    const byName = new Map();
+    for (const t of found.values()) if (!byName.has(t.name)) byName.set(t.name, t);
+    teams = [...byName.values()];
+    if (teams.length) break;
+  }
+  teams.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  state.teamsByLeague.set(league.id, teams);
+  return teams;
+}
+
+async function renderTeams(view) {
+  const leagues = activeLeagues();
+  if (leagues.length !== 1) {
+    view.innerHTML =
+      `<h2 class="section-title">Liga / Event wählen</h2><div class="league-grid">` +
+      leagues
+        .map(
+          (l) => `<button class="league-tile" data-pick-league="${h(l.id)}">
+            <img src="${h(l.image)}" alt="" loading="lazy"><span>${h(l.name)}</span><small>${h(regionLabel(l.region))}</small></button>`
+        )
+        .join('') +
+      `</div>` +
+      (leagues.length ? '' : `<div class="empty"><p>Keine Ligen in dieser Auswahl.</p></div>`);
+    return;
+  }
+  const league = leagues[0];
+  if (!state.teamsByLeague.has(league.id)) view.innerHTML = loading('Lade Teams …');
+  let teams;
+  try {
+    teams = await loadLeagueTeams(league);
+  } catch (err) {
+    view.innerHTML = errorBox(err);
+    return;
+  }
+  if (state.tab !== 'teams' || activeLeagues()[0]?.id !== league.id) return;
+  let html = `<div class="standings-head"><img src="${h(league.image)}" alt=""><div><h2>${h(league.name)}</h2><small class="muted">${teams.length} Teams</small></div></div>`;
+  if (!teams.length) html += `<div class="empty"><p>Für ${h(league.name)} sind gerade keine Teams verfügbar.</p></div>`;
+  html += `<div class="team-grid">${teams
+    .map(
+      (t) => `<button class="team-tile" data-team="${h(t.slug || t.id)}">
+        <img src="${h(t.image)}" alt="" loading="lazy">
+        <span>${h(t.name)}</span>
+        <small>${h(t.code || '')}${t.record ? ` · ${t.record.wins}–${t.record.losses}` : ''}</small></button>`
+    )
+    .join('')}</div>`;
+  view.innerHTML = html;
+}
+
+$('#view').addEventListener('click', (e) => {
+  const tile = e.target.closest('[data-team]');
+  if (!tile) return;
+  const league = activeLeagues()[0];
+  const team = (state.teamsByLeague.get(league?.id) || []).find((t) => (t.slug || t.id) === tile.dataset.team);
+  if (team) openTeam(team, league);
+});
+
+// Team-Detail (eigenes Sheet, damit ein Match darüber geöffnet werden kann)
+const teamSheet = $('#teamSheet');
+let teamToken = 0;
+
+function closeTeam() {
+  teamSheet.classList.remove('open');
+  teamToken++;
+  if (location.hash.startsWith('#team')) history.back();
+}
+$('#teamBackdrop').addEventListener('click', closeTeam);
+window.addEventListener('popstate', () => {
+  if (teamSheet.classList.contains('open') && !location.hash.startsWith('#team') && !location.hash.startsWith('#match')) {
+    teamSheet.classList.remove('open');
+    teamToken++;
+  }
+});
+$('#teamBody').addEventListener('click', (e) => {
+  if (e.target.closest('.close')) return closeTeam();
+  const m = e.target.closest('[data-match]');
+  if (m && m.dataset.match) openMatch(m.dataset.match);
+});
+
+const ROLE_ORDER = ['top', 'jungle', 'mid', 'bottom', 'support'];
+const ROLE_NAME = { top: 'Top', jungle: 'Jungle', mid: 'Mid', bottom: 'Bot', support: 'Support', none: 'Ersatz / Staff' };
+
+const sameTeam = (a, team) =>
+  !!a && ((a.code && team.code && a.code.toLowerCase() === team.code.toLowerCase()) || (a.name && a.name === team.name));
+
+async function openTeam(team, contextLeague) {
+  const token = ++teamToken;
+  const body = $('#teamBody');
+  body.innerHTML = `<button class="close" aria-label="Schließen">✕</button>${teamHead(team, null)}${loading('Lade Kader und Ergebnisse …')}`;
+  teamSheet.classList.add('open');
+  if (!location.hash.startsWith('#team')) history.pushState(null, '', '#team');
+
+  try {
+    const details = await api.getTeam(team.slug || team.id).catch(() => null);
+    if (token !== teamToken) return;
+    const full = { ...team, ...(details || {}) };
+
+    // Spiele aus der Liga, in der das Team angezeigt wird, plus seiner Heimatliga
+    const leagueIds = new Set([contextLeague?.id].filter(Boolean));
+    const home = details?.homeLeague?.name && state.leagues.find((l) => l.name === details.homeLeague.name);
+    if (home) leagueIds.add(home.id);
+    const { results, upcoming } = await loadTeamMatches(full, [...leagueIds]);
+    if (token !== teamToken) return;
+
+    body.innerHTML = `<button class="close" aria-label="Schließen">✕</button>${teamHead(full, details)}${rosterHtml(details)}${formHtml(full, results)}${
+      upcoming.length ? `<h3 class="sub">Nächste Spiele</h3>` + upcoming.map((ev) => matchCard(ev, { showDate: true })).join('') : ''
+    }<h3 class="sub">Letzte Ergebnisse</h3>${
+      results.length ? results.map((ev) => resultRow(ev, full)).join('') : `<div class="empty compact"><p>Keine Ergebnisse gefunden.</p></div>`
+    }`;
+  } catch (err) {
+    if (token === teamToken) body.innerHTML = `<button class="close" aria-label="Schließen">✕</button>${teamHead(team, null)}${errorBox(err)}`;
+  }
+}
+
+async function loadTeamMatches(team, leagueIds) {
+  const s = await api.getSchedule({ leagueIds });
+  let events = s.events || [];
+  let older = s.pages?.older;
+  const mine = () => events.filter((ev) => ev.type === 'match' && (ev.match?.teams || []).some((t) => sameTeam(t, team)));
+  // Bei Bedarf ältere Seiten nachladen, bis 10 Ergebnisse da sind
+  for (let i = 0; i < 4 && older && mine().filter((ev) => ev.state === 'completed').length < 10; i++) {
+    const page = await api.getSchedule({ leagueIds, pageToken: older });
+    events = [...(page.events || []), ...events];
+    older = page.pages?.older;
+  }
+  const seen = new Set();
+  const list = mine().filter((ev) => {
+    const key = ev.match?.id || ev.startTime;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const results = list
+    .filter((ev) => ev.state === 'completed')
+    .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+    .slice(0, 10);
+  const upcoming = list
+    .filter((ev) => ev.state !== 'completed')
+    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    .slice(0, 3);
+  return { results, upcoming };
+}
+
+function teamHead(team, details) {
+  const home = details?.homeLeague;
+  return `<div class="th">
+    <img src="${h(team.image)}" alt="">
+    <div><h2>${h(team.name)}</h2>
+    <small>${h(team.code || '')}${home?.name ? ` · ${h(home.name)}` : ''}${home?.region ? ` (${h(regionLabel(home.region))})` : ''}</small></div>
+  </div>`;
+}
+
+function rosterHtml(details) {
+  const players = details?.players || [];
+  if (!players.length) return `<h3 class="sub">Kader</h3><div class="empty compact"><p>Kein Kader verfügbar.</p></div>`;
+  const rank = (p) => {
+    const i = ROLE_ORDER.indexOf(p.role);
+    return i < 0 ? 99 : i;
+  };
+  const sorted = [...players].sort((a, b) => rank(a) - rank(b) || (a.summonerName || '').localeCompare(b.summonerName || ''));
+  return (
+    `<h3 class="sub">Aktueller Kader</h3><div class="roster">` +
+    sorted
+      .map((p) => {
+        const real = [p.firstName, p.lastName].filter(Boolean).join(' ');
+        return `<div class="player">
+          <img src="${h(p.image)}" alt="" loading="lazy">
+          <div class="pn"><b>${h(p.summonerName)}</b><small>${h(real)}</small></div>
+          <span class="role role-${h(p.role || 'none')}">${h(ROLE_NAME[p.role] || p.role || 'Ersatz / Staff')}</span>
+        </div>`;
+      })
+      .join('') +
+    `</div>`
+  );
+}
+
+function outcomeFor(ev, team) {
+  const me = (ev.match?.teams || []).find((t) => sameTeam(t, team));
+  return me?.result?.outcome; // 'win' | 'loss' | undefined
+}
+
+function formHtml(team, results) {
+  if (!results.length) return '';
+  const outcomes = results.map((ev) => outcomeFor(ev, team));
+  const w = outcomes.filter((o) => o === 'win').length;
+  const l = outcomes.filter((o) => o === 'loss').length;
+  return `<h3 class="sub">Form (letzte ${results.length})</h3>
+    <div class="form"><div class="dots">${outcomes
+      .map((o) => `<span class="fdot ${o === 'win' ? 'w' : o === 'loss' ? 'l' : ''}">${o === 'win' ? 'S' : o === 'loss' ? 'N' : '–'}</span>`)
+      .join('')}</div><b>${w} S – ${l} N</b></div>`;
+}
+
+function resultRow(ev, team) {
+  const teams = ev.match?.teams || [];
+  const me = teams.find((t) => sameTeam(t, team)) || teams[0] || {};
+  const opp = teams.find((t) => t !== me) || {};
+  const outcome = me.result?.outcome;
+  const league = leagueOf(ev);
+  const d = new Date(ev.startTime);
+  return `<button class="result" data-match="${h(ev.match?.id || '')}">
+    <span class="badge ${outcome === 'win' ? 'w' : outcome === 'loss' ? 'l' : ''}">${outcome === 'win' ? 'S' : outcome === 'loss' ? 'N' : '–'}</span>
+    <span class="score">${h(me.result?.gameWins ?? 0)} : ${h(opp.result?.gameWins ?? 0)}</span>
+    <span class="opp"><img src="${h(opp.image)}" alt="" loading="lazy"><span>vs ${h(opp.name || 'TBD')}</span></span>
+    <span class="meta">${h(fmtDay.format(d))}<small>${h(league.name || ev.league?.name || '')}</small></span>
+  </button>`;
 }
 
 // ---------- Favoriten-Verwaltung ----------

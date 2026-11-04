@@ -6,6 +6,7 @@ Fürs Handy gebaute Web-App (PWA): Damit verfolgst du LoL-Esports-Spiele live, s
 - **Live**: laufende Matches mit Serienstand, danach die nächsten und zuletzt gespielten Matches (aktualisiert sich alle 30 s).
 - **Spielplan**: nach Tagen gruppiert, springt automatisch zu „Heute“, frühere und spätere Spiele lassen sich nachladen.
 - **Tabellen**: Rangliste je Turnier und Phase (z. B. Swiss, Gruppen, Saison); in den Playoffs werden die Bracket-Matches gezeigt. Ältere Turniere sind über das Dropdown erreichbar.
+- **Teams**: alle Teams einer Liga bzw. eines Events. Antippen zeigt den aktuellen Kader (Spieler mit Rolle), die Form der letzten 10 Matches, die nächsten Spiele und die letzten Ergebnisse.
 - **Match-Details** (Match antippen): Spiele der Serie und Live-Statistik des Spiels – Kills, Gold und Golddifferenz, Türme, Inhibitoren, Barons, Drachen sowie Spieler mit Champion, KDA, CS und Gold. Dazu ein Link zum Stream.
 - **Filter**: Regionen (International, Europa, Korea, China, …) und darunter die einzelnen Ligen/Events.
 - **Favoriten**: Über ☆ oben rechts Ligen markieren; der Filter „★ Favoriten“ zeigt dann nur diese.
