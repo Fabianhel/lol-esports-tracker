@@ -6,10 +6,10 @@ const Tracker = Native ? (Native.registerPlugin ? Native.registerPlugin('LiveTra
 const REPO = 'Fabianhel/lol-esports-tracker';
 const APK_URL = `https://github.com/${REPO}/releases/latest/download/lol-esports.apk`;
 
-// Deutscher Co-Stream (Tolkin). YouTube: Suche mit Filter „Live“, da der Kanalname nicht fest steht.
+// Deutscher Co-Stream (Tolkin)
 const GERMAN_STREAM = {
   twitch: 'https://www.twitch.tv/tolkin',
-  youtube: 'https://www.youtube.com/results?search_query=tolkin+lol&sp=EgJAAQ%253D%253D',
+  youtube: 'https://www.youtube.com/@TolkinLoL/live',
 };
 const germanStreamButtons = (cls = '') =>
   `<div class="de-stream ${cls}"><span class="de-label">🇩🇪 Tolkin</span>
